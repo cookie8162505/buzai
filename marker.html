@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>測定用マーカー（印刷用）</title>
+<link rel="icon" href="data:,">
+<style>
+  @page { size:A4; margin:12mm; }
+  body { font-family:-apple-system, "Hiragino Sans", "Yu Gothic", sans-serif; margin:0; padding:12px; }
+  .note { font-size:13px; color:#333; margin-bottom:10px; }
+  .grid { display:grid; grid-template-columns:repeat(2, 62.5mm); gap:14mm 20mm; }
+  .m svg { width:62.5mm; height:62.5mm; display:block; }
+  .m p { margin:2px 0 0; font-size:10px; text-align:center; }
+  .ruler { margin-top:12mm; width:100mm; height:6mm; border:0.3mm solid #000; border-top:none; position:relative; }
+  .ruler span { position:absolute; bottom:0; width:0.3mm; background:#000; }
+  @media print { .note button { display:none; } }
+</style>
+</head>
+<body>
+<div class="note">
+  印刷するときは「<b>実際のサイズ（100%）</b>」を選んでください（「用紙に合わせる」は不可）。<br>
+  印刷後、<b>黒い四角の一辺</b>を定規で測り、アプリの「マーカーの黒い四角の一辺」に入れてください（設計上は50.0mm）。<br>
+  <button onclick="print()">印刷する</button>
+</div>
+<div class="grid" id="grid"></div>
+<div style="font-size:10px;margin-top:10mm">確認用 100mm</div>
+<div class="ruler" id="ruler"></div>
+<script src="lib/cv.js"></script>
+<script src="lib/aruco.js"></script>
+<script>
+  const dic = new AR.Dictionary("ARUCO_MIP_36h12");
+  const g = document.getElementById("grid");
+  [0,1,2,3].forEach(id=>{
+    const d=document.createElement("div"); d.className="m";
+    d.innerHTML = dic.generateSVG(id).replace("<svg ","<svg shape-rendering=\"crispEdges\" ") + `<p>ID ${id}（黒い四角 50mm）</p>`;
+    g.appendChild(d);
+  });
+  const r=document.getElementById("ruler");
+  for(let i=0;i<=10;i++){ const s=document.createElement("span"); s.style.left=(i*10)+"mm"; s.style.height=(i%5?3:6)+"mm"; r.appendChild(s); }
+</script>
+</body>
+</html>

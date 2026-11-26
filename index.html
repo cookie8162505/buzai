@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>部材検査 試作版</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --fg:#111; --bg:#fff; --mute:#777; --line:#ddd; --ok:#0a7a35; --ng:#c62828; --acc:#1a56db; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:-apple-system, "Hiragino Sans", "Yu Gothic", sans-serif; color:var(--fg); background:#f4f4f4; }
+  header { position:sticky; top:0; z-index:10; background:#111; color:#fff; padding:10px 14px; padding-top:calc(10px + env(safe-area-inset-top)); display:flex; align-items:center; gap:8px; }
+  header h1 { font-size:16px; margin:0; flex:1; }
+  header .tag { font-size:11px; border:1px solid #888; border-radius:4px; padding:1px 6px; color:#ccc; }
+  main { padding:12px; padding-bottom:110px; max-width:760px; margin:0 auto; }
+  section { background:var(--bg); border-radius:10px; padding:14px; margin-bottom:12px; }
+  section h2 { font-size:15px; margin:0 0 10px; display:flex; align-items:center; gap:8px; }
+  section h2 .no { width:22px; height:22px; border-radius:50%; background:#111; color:#fff; font-size:12px; display:inline-flex; align-items:center; justify-content:center; }
+  section.done h2 .no { background:var(--ok); }
+  section.locked { opacity:.45; pointer-events:none; }
+  button { font:inherit; font-size:15px; border:1px solid #111; background:#fff; color:#111; border-radius:8px; padding:10px 14px; }
+  button.primary { background:#111; color:#fff; }
+  button:disabled { opacity:.4; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input[type=text], input[type=number], select { font:inherit; font-size:16px; padding:9px 10px; border:1px solid #bbb; border-radius:8px; }
+  .grow { flex:1; min-width:0; }
+  .muted { color:var(--mute); font-size:13px; }
+  .err { color:var(--ng); font-size:13px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { border:1px solid var(--line); padding:6px 7px; text-align:left; vertical-align:middle; }
+  th { background:#f7f7f7; font-weight:600; white-space:nowrap; }
+  .info td:first-child { width:7.5em; background:#f7f7f7; font-weight:600; }
+  video { width:100%; border-radius:8px; background:#000; max-height:50vh; object-fit:cover; }
+  .drawing { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  .thumbs { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .thumbs .t { position:relative; }
+  .thumbs img { width:84px; height:84px; object-fit:cover; border-radius:6px; border:2px solid transparent; }
+  .thumbs img.sel { border-color:var(--acc); }
+  .thumbs .x { position:absolute; top:-6px; right:-6px; width:22px; height:22px; padding:0; border-radius:50%; font-size:12px; background:#fff; }
+  #measureWrap { position:relative; margin-top:10px; touch-action:none; }
+  #measureCanvas { width:100%; display:block; border-radius:6px; background:#222; }
+  #loupe { position:absolute; width:130px; height:130px; border-radius:50%; border:3px solid #fff; box-shadow:0 2px 10px rgba(0,0,0,.5); pointer-events:none; display:none; }
+  .result { font-size:28px; font-weight:700; margin:6px 0; }
+  .judge button { min-width:56px; padding:7px 10px; }
+  .judge button.on-ok { background:var(--ok); border-color:var(--ok); color:#fff; }
+  .judge button.on-ng { background:var(--ng); border-color:var(--ng); color:#fff; }
+  .sheet { border:2px solid #111; padding:10px; background:#fff; }
+  .sheet h3 { text-align:center; margin:0 0 8px; font-size:17px; letter-spacing:.3em; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; color:#fff; font-weight:700; }
+  .badge.ok { background:var(--ok); } .badge.ng { background:var(--ng); }
+  /* 次にやることガイド（左下・白黒） */
+  #guide { position:fixed; left:10px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:20; background:#fff; color:#111; border:1.5px solid #111; border-radius:8px; padding:7px 12px; font-size:15px; font-weight:600; box-shadow:0 1px 4px rgba(0,0,0,.15); }
+  #guide small { display:block; font-size:10px; font-weight:400; color:#666; }
+  details summary { cursor:pointer; font-size:14px; }
+  .hist li { margin-bottom:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>部材検査</h1>
+  <span class="tag">試作版</span>
+  <button id="resetBtn" style="padding:4px 10px;font-size:13px;background:#111;color:#fff;border-color:#666">最初から</button>
+</header>
+
+<main>
+  <!-- 1. バーコード -->
+  <section id="s1">
+    <h2><span class="no">1</span>バーコード（TOPオーダー）</h2>
+    <div class="row">
+      <input id="orderInput" class="grow" type="text" inputmode="numeric" placeholder="TOPオーダーを入力" autocomplete="off">
+      <button class="primary" id="orderGo">呼び出す</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="scanBtn">カメラで読む</button>
+      <span class="muted">テスト用：</span>
+      <span id="sampleBtns" class="row"></span>
+    </div>
+    <div id="scanArea" style="display:none;margin-top:10px">
+      <video id="scanVideo" playsinline muted></video>
+      <div class="row" style="margin-top:6px"><button id="scanStop">やめる</button><span class="muted">バーコードを枠いっぱいに映してください</span></div>
+    </div>
+    <div id="orderErr" class="err"></div>
+  </section>
+
+  <!-- 2. 部材・図面 -->
+  <section id="s2" class="locked">
+    <h2><span class="no">2</span>部材と図面</h2>
+    <table class="info" id="partInfo"></table>
+    <div style="margin-top:10px" id="drawingBox"></div>
+    <div class="row" style="margin-top:10px"><button class="primary" id="drawingOk">図面を確定</button></div>
+  </section>
+
+  <!-- 3. 撮影 -->
+  <section id="s3" class="locked">
+    <h2><span class="no">3</span>撮影</h2>
+    <div class="row">
+      <label class="row"><button class="primary" id="shootBtn" type="button">背面カメラで撮影</button></label>
+      <input id="photoInput" type="file" accept="image/*" capture="environment" style="display:none">
+      <span class="muted" id="photoCount">0枚</span>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+    <p class="muted" style="margin:8px 0 0">寸法を測る写真には、マーカーを部材と同じ高さに置いて一緒に写してください。</p>
+  </section>
+
+  <!-- 4. 測る -->
+  <section id="s4" class="locked">
+    <h2><span class="no">4</span>測る</h2>
+    <div class="row">
+      <span class="muted">マーカーの黒い四角の一辺</span>
+      <input id="markerMm" type="number" value="50" step="0.1" style="width:90px"> <span class="muted">mm</span>
+      <a href="marker.html" target="_blank" class="muted">マーカーを印刷</a>
+    </div>
+    <div id="measureMsg" class="muted" style="margin-top:8px">撮影した写真を選ぶと、マーカーを探します。</div>
+    <div id="measureWrap">
+      <canvas id="measureCanvas"></canvas>
+      <canvas id="loupe" width="130" height="130"></canvas>
+    </div>
+    <div id="measureOut" style="display:none">
+      <div class="result" id="lenOut">— mm</div>
+      <div class="muted" id="lenDetail"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="ptReset">点を打ち直す</button>
+        <select id="applyTo"></select>
+        <button class="primary" id="applyBtn">この値を入れる</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. 判定 -->
+  <section id="s5" class="locked">
+    <h2><span class="no">5</span>OK・NG</h2>
+    <table id="itemTable"></table>
+    <div class="row" style="margin-top:10px">
+      <span class="muted">検査者</span><input id="inspector" type="text" class="grow" placeholder="名前">
+    </div>
+    <div class="row" style="margin-top:10px"><button class="primary" id="finishBtn">判定を確定</button></div>
+  </section>
+
+  <!-- 6. 保存 -->
+  <section id="s6" class="locked">
+    <h2><span class="no">6</span>検査票</h2>
+    <div id="sheetBox"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" id="xlsxBtn">Excelで保存</button>
+      <button id="photoSaveBtn">写真を保存</button>
+      <button id="nextBtn">次の検査へ</button>
+    </div>
+    <div id="saveMsg" class="muted" style="margin-top:6px"></div>
+  </section>
+
+  <section>
+    <details>
+      <summary>この端末での検査履歴</summary>
+      <ul class="hist" id="history"></ul>
+      <button id="histXlsx" style="margin-top:6px">履歴をまとめてExcelに</button>
+      <button id="histClear" style="margin-top:6px">履歴を消す</button>
+    </details>
+  </section>
+</main>
+
+<div id="guide"><small>次にやること</small><span id="guideText">バーコードを読む</span></div>
+
+<script src="lib/cv.js"></script>
+<script src="lib/aruco.js"></script>
+<script src="lib/zxing.min.js"></script>
+<script src="lib/xlsx.mini.min.js"></script>
+<script>
+"use strict";
+/* ============ テスト用データ（本番ではここを部材指示リストに置き換える） ============ */
+const TEST_DATA = {
+  "4500123401": { part:"G18XL5", name:"サイドパネル（左）", material:"SECC t1.2", color:"ホワイト", qty:1, kind:"組立指示",
+    size:{ w:1850, h:620 }, holes:4,
+    items:[
+      { k:"外観（キズ・へこみ）", std:"目視で異常なし", type:"judge" },
+      { k:"最大寸法（長さ）", std:"1850 ±2", type:"mm", nominal:1850, tol:2 },
+      { k:"最大寸法（幅）", std:"620 ±1.5", type:"mm", nominal:620, tol:1.5 },
+      { k:"穴ピッチ", std:"300 ±0.5", type:"mm", nominal:300, tol:0.5 },
+      { k:"色", std:"ホワイト（標準板と照合）", type:"judge" },
+      { k:"数量", std:"1", type:"judge" } ] },
+  "4500123402": { part:"K22MA1", name:"前面ガラス押さえ", material:"A5052 t2.0", color:"シルバー", qty:2, kind:"梱包指示",
+    size:{ w:980, h:120 }, holes:6, parentOrder:"4500123301",
+    items:[
+      { k:"外観（キズ・へこみ）", std:"目視で異常なし", type:"judge" },
+      { k:"最大寸法（長さ）", std:"980 ±1", type:"mm", nominal:980, tol:1 },
+      { k:"曲げ高さ", std:"25 ±0.5", type:"mm", nominal:25, tol:0.5 },
+      { k:"色", std:"シルバー", type:"judge" },
+      { k:"数量", std:"2", type:"judge" } ] },
+  "4500123403": { part:"B05TR3", name:"底板補強", material:"SPCC t1.6", color:"黒", qty:4, kind:"組立指示",
+    size:{ w:400, h:180 }, holes:2,
+    items:[
+      { k:"外観（キズ・へこみ）", std:"目視で異常なし", type:"judge" },
+      { k:"最大寸法（長さ）", std:"400 ±1", type:"mm", nominal:400, tol:1 },
+      { k:"最大寸法（幅）", std:"180 ±1", type:"mm", nominal:180, tol:1 },
+      { k:"色", std:"黒", type:"judge" },
+      { k:"数量", std:"4", type:"judge" } ] }
+};
+
+/* ============ 状態 ============ */
+const S = { order:null, data:null, photos:[], selPhoto:-1, values:{}, judges:{}, finished:false };
+const $ = id => document.getElementById(id);
+const store = {
+  get(){ try { return JSON.parse(localStorage.getItem("buzai_proto_hist")||"[]"); } catch(e){ return []; } },
+  set(v){ try { localStorage.setItem("buzai_proto_hist", JSON.stringify(v)); } catch(e){} }
+};
+
+function guide(t){ $("guideText").textContent = t; }
+function unlock(n){ for(let i=1;i<=6;i++){ $("s"+i).classList.toggle("locked", i>n); } }
+function done(n,on=true){ $("s"+n).classList.toggle("done", on); }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ============ 1. バーコード ============ */
+Object.keys(TEST_DATA).forEach(k=>{
+  const b=document.createElement("button"); b.textContent=k.slice(-2); b.style.padding="6px 10px";
+  b.onclick=()=>{ $("orderInput").value=k; loadOrder(k); }; $("sampleBtns").appendChild(b);
+});
+$("orderGo").onclick = ()=>loadOrder($("orderInput").value.trim());
+$("orderInput").addEventListener("keydown", e=>{ if(e.key==="Enter") loadOrder(e.target.value.trim()); });
+
+let zxReader=null;
+$("scanBtn").onclick = async ()=>{
+  $("orderErr").textContent="";
+  if(!window.ZXing){ $("orderErr").textContent="読み取りの部品が読み込めませんでした。手で入力してください。"; return; }
+  $("scanArea").style.display="block";
+  try{
+    zxReader = new ZXing.BrowserMultiFormatReader();
+    await zxReader.decodeFromConstraints({ video:{ facingMode:{ ideal:"environment" } } }, $("scanVideo"), (res)=>{
+      if(res){ const t=res.getText(); stopScan(); $("orderInput").value=t; if(navigator.vibrate) navigator.vibrate(80); loadOrder(t); }
+    });
+  }catch(e){ stopScan(); $("orderErr").textContent="カメラを使えませんでした（"+(e.name||e)+"）。https のURLで開いているか確認してください。"; }
+};
+function stopScan(){ try{ zxReader && zxReader.reset(); }catch(e){} $("scanArea").style.display="none"; }
+$("scanStop").onclick = stopScan;
+
+function loadOrder(code){
+  $("orderErr").textContent="";
+  const d = TEST_DATA[code];
+  if(!d){ $("orderErr").textContent="「"+code+"」はテスト用データにありません。"; return; }
+  resetInspection(false);
+  S.order=code; S.data=d;
+  const rows = [["TOPオーダー",code+"（"+d.kind+"）"],["部品番号",d.part],["品名",d.name],["材質",d.material],["色",d.color],["数量",d.qty]];
+  if(d.parentOrder) rows.push(["組立指示",d.parentOrder+"（梱包指示のため組立指示から部品・図面を表示）"]);
+  $("partInfo").innerHTML = rows.map(r=>`<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join("");
+  $("drawingBox").innerHTML = drawingSVG(d);
+  done(1); unlock(2); guide("図面を確定");
+  $("s2").scrollIntoView({behavior:"smooth"});
+}
+
+/* ダミー図面 */
+function drawingSVG(d){
+  const W=600,H=300, m=60;
+  const sc=Math.min((W-2*m)/d.size.w,(H-2*m)/d.size.h);
+  const w=d.size.w*sc, h=d.size.h*sc, x=(W-w)/2, y=(H-h)/2;
+  let holes="";
+  for(let i=0;i<d.holes;i++){ const hx=x+w*(i+1)/(d.holes+1); holes+=`<circle cx="${hx}" cy="${y+h/2}" r="5" fill="none" stroke="#111"/>`; }
+  return `<svg class="drawing" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#111" stroke-width="2"/>${holes}
+    <line x1="${x}" y1="${y-25}" x2="${x+w}" y2="${y-25}" stroke="#111" marker-start="url(#a)" marker-end="url(#a)"/>
+    <text x="${W/2}" y="${y-31}" font-size="14" text-anchor="middle">${d.size.w}</text>
+    <line x1="${x+w+25}" y1="${y}" x2="${x+w+25}" y2="${y+h}" stroke="#111"/>
+    <text x="${x+w+32}" y="${y+h/2+5}" font-size="14">${d.size.h}</text>
+    <defs><marker id="a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs>
+    <rect x="${W-190}" y="${H-46}" width="185" height="41" fill="#fff" stroke="#111"/>
+    <text x="${W-182}" y="${H-29}" font-size="12">${esc(d.part)}  ${esc(d.name)}</text>
+    <text x="${W-182}" y="${H-12}" font-size="11" fill="#555">ダミー図面（試作用）</text>
+  </svg>`;
+}
+$("drawingOk").onclick = ()=>{ done(2); unlock(3); guide("撮影へ"); $("s3").scrollIntoView({behavior:"smooth"}); };
+
+/* ============ 3. 撮影 ============ */
+$("shootBtn").onclick = ()=>$("photoInput").click();
+$("photoInput").onchange = e=>{
+  const f=e.target.files[0]; e.target.value="";
+  if(!f) return;
+  const url=URL.createObjectURL(f);
+  const ts=new Date();
+  S.photos.push({ file:f, url, name:`${S.order}_${S.data.part}_${S.photos.length+1}.jpg`, time:ts });
+  renderThumbs(); done(3); unlock(5); unlock5Also4();
+  selectPhoto(S.photos.length-1);
+};
+function unlock5Also4(){ ["s4","s5"].forEach(id=>$(id).classList.remove("locked")); }
+function renderThumbs(){
+  $("photoCount").textContent=S.photos.length+"枚";
+  $("thumbs").innerHTML="";
+  S.photos.forEach((p,i)=>{
+    const d=document.createElement("div"); d.className="t";
+    d.innerHTML=`<img src="${p.url}" class="${i===S.selPhoto?"sel":""}"><button class="x">×</button>`;
+    d.querySelector("img").onclick=()=>selectPhoto(i);
+    d.querySelector(".x").onclick=()=>{ URL.revokeObjectURL(p.url); S.photos.splice(i,1); if(S.selPhoto>=S.photos.length) S.selPhoto=S.photos.length-1; renderThumbs(); if(S.selPhoto>=0) selectPhoto(S.selPhoto); else clearMeasure(); };
+    $("thumbs").appendChild(d);
+  });
+}
+
+/* ============ 4. 測る（ArUcoマーカー → 平面補正 → 2点間） ============ */
+const detector = window.AR ? new AR.Detector({ dictionaryName:"ARUCO_MIP_36h12" }) : null;
+const MC=$("measureCanvas"), mctx=MC.getContext("2d");
+const M = { img:null, scale:1, markers:[], Hs:[], pts:[], drag:-1 };
+const DETECT_MAX = 2400;   // マーカー検出のサイズ（縮小しすぎると角の位置がずれて誤差が大きくなる）
+const VIEW_MAX = 2400;     // 表示・測定用の最大サイズ
+
+function clearMeasure(){ M.img=null; M.pts=[]; mctx.clearRect(0,0,MC.width,MC.height); MC.height=0; $("measureOut").style.display="none"; $("measureMsg").textContent="撮影した写真を選ぶと、マーカーを探します。"; }
+
+function selectPhoto(i){
+  S.selPhoto=i; renderThumbs();
+  const p=S.photos[i];
+  $("measureMsg").textContent="マーカーを探しています…";
+  const img=new Image();
+  img.onload=()=>{ setTimeout(()=>analyze(img),30); };
+  img.src=p.url;
+}
+
+function analyze(img){
+  const s=Math.min(1, VIEW_MAX/Math.max(img.naturalWidth,img.naturalHeight));
+  MC.width=Math.round(img.naturalWidth*s); MC.height=Math.round(img.naturalHeight*s);
+  mctx.drawImage(img,0,0,MC.width,MC.height);
+  M.img=mctx.getImageData(0,0,MC.width,MC.height);
+  M.pts=[]; M.markers=[]; M.Hs=[];
+  if(!detector){ $("measureMsg").innerHTML='<span class="err">マーカー検出の部品が読み込めませんでした。</span>'; redraw(); return; }
+  // 検出は縮小画像で行い、座標を戻す
+  const ds=Math.min(1, DETECT_MAX/Math.max(MC.width,MC.height));
+  const c=document.createElement("canvas"); c.width=Math.round(MC.width*ds); c.height=Math.round(MC.height*ds);
+  const cx=c.getContext("2d"); cx.drawImage(MC,0,0,c.width,c.height);
+  let found=[];
+  try{ found=detector.detect(cx.getImageData(0,0,c.width,c.height)); }catch(e){ console.log(e); }
+  M.markers=found.map(m=>({ id:m.id, corners:m.corners.map(p=>({x:p.x/ds,y:p.y/ds})) }));
+  rebuildH();
+  if(M.markers.length===0){
+    $("measureMsg").innerHTML='<span class="err">マーカーが見つかりません。</span> マーカー全体が写るように、ぶれないように撮り直してください。';
+  } else {
+    $("measureMsg").textContent=`マーカー ${M.markers.length}個 を見つけました。測りたい2点をタップしてください（点はドラッグで動かせます）。`;
+    guide("測る");
+  }
+  redraw();
+}
+function rebuildH(){
+  const s=parseFloat($("markerMm").value)||50;
+  M.Hs=M.markers.map(m=>homography(m.corners,[{x:0,y:0},{x:s,y:0},{x:s,y:s},{x:0,y:s}]));
+  M.sideMm=s;
+}
+$("markerMm").oninput=()=>{ if(M.markers.length){ rebuildH(); updateLen(); } };
+
+/* 4点から射影変換行列を求める（画像座標 → マーカー平面のmm座標） */
+function homography(src,dst){
+  const A=[],b=[];
+  for(let i=0;i<4;i++){
+    const {x,y}=src[i], {x:u,y:v}=dst[i];
+    A.push([x,y,1,0,0,0,-u*x,-u*y]); b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]); b.push(v);
+  }
+  const h=solve(A,b); h.push(1); return h;
+}
+function solve(A,b){
+  const n=b.length; A=A.map((r,i)=>r.concat(b[i]));
+  for(let c=0;c<n;c++){
+    let p=c; for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[p][c])) p=r;
+    [A[c],A[p]]=[A[p],A[c]];
+    for(let r=0;r<n;r++){ if(r===c) continue; const f=A[r][c]/A[c][c]; for(let k=c;k<=n;k++) A[r][k]-=f*A[c][k]; }
+  }
+  return A.map((r,i)=>r[n]/r[i]);
+}
+function apply(H,p){ const w=H[6]*p.x+H[7]*p.y+H[8]; return { x:(H[0]*p.x+H[1]*p.y+H[2])/w, y:(H[3]*p.x+H[4]*p.y+H[5])/w }; }
+function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+function updateLen(){
+  if(M.pts.length<2 || !M.Hs.length){ $("measureOut").style.display = M.pts.length? "block":"none"; $("lenOut").textContent="— mm"; $("lenDetail").textContent=M.Hs.length?"もう1点タップしてください。":""; redraw(); return; }
+  const vals=M.Hs.map(H=>dist(apply(H,M.pts[0]),apply(H,M.pts[1])));
+  const avg=vals.reduce((a,v)=>a+v,0)/vals.length;
+  M.len=avg;
+  $("measureOut").style.display="block";
+  $("lenOut").textContent=avg.toFixed(1)+" mm";
+  $("lenDetail").textContent = vals.length>1
+    ? `マーカー${vals.length}個の平均（ばらつき ${ (Math.max(...vals)-Math.min(...vals)).toFixed(1) } mm）`
+    : "マーカー1個で計算（離れた場所ほど誤差が大きくなります）";
+  redraw();
+}
+
+function redraw(){
+  if(!M.img) return;
+  mctx.putImageData(M.img,0,0);
+  const lw=Math.max(2,MC.width/400);
+  M.markers.forEach(m=>{
+    mctx.strokeStyle="#00e676"; mctx.lineWidth=lw*1.5; mctx.beginPath();
+    m.corners.forEach((p,i)=>i?mctx.lineTo(p.x,p.y):mctx.moveTo(p.x,p.y)); mctx.closePath(); mctx.stroke();
+  });
+  if(M.pts.length===2){ mctx.strokeStyle="#ffeb3b"; mctx.lineWidth=lw; mctx.beginPath(); mctx.moveTo(M.pts[0].x,M.pts[0].y); mctx.lineTo(M.pts[1].x,M.pts[1].y); mctx.stroke(); }
+  M.pts.forEach((p,i)=>{
+    mctx.strokeStyle="#ffeb3b"; mctx.lineWidth=lw; const r=lw*7;
+    mctx.beginPath(); mctx.arc(p.x,p.y,r,0,Math.PI*2); mctx.stroke();
+    mctx.beginPath(); mctx.moveTo(p.x-r*1.6,p.y); mctx.lineTo(p.x+r*1.6,p.y); mctx.moveTo(p.x,p.y-r*1.6); mctx.lineTo(p.x,p.y+r*1.6); mctx.stroke();
+    mctx.fillStyle="#ffeb3b"; mctx.font=`bold ${lw*10}px sans-serif`; mctx.fillText(i?"B":"A",p.x+r*1.2,p.y-r*1.2);
+  });
+}
+
+/* タッチ操作：タップで点を置く、ドラッグで動かす、指の上に拡大鏡（指で隠れないよう上にずらす） */
+const LOUPE=$("loupe"), lctx=LOUPE.getContext("2d");
+const OFFSET_Y = 70; // 指より上を指す（画面px）
+function toImg(ev){
+  const r=MC.getBoundingClientRect(), t=ev.touches?ev.touches[0]||ev.changedTouches[0]:ev;
+  const k=MC.width/r.width;
+  return { x:(t.clientX-r.left)*k, y:(t.clientY-r.top-OFFSET_Y)*k, sx:t.clientX-r.left, sy:t.clientY-r.top };
+}
+function showLoupe(p){
+  const z=3, size=130, k=MC.width/MC.getBoundingClientRect().width;
+  const src=size/z*k;
+  LOUPE.style.display="block";
+  LOUPE.style.left=(p.sx-size/2)+"px"; LOUPE.style.top=(p.sy-OFFSET_Y-size-20)+"px";
+  lctx.fillStyle="#000"; lctx.fillRect(0,0,size,size);
+  lctx.drawImage(MC,p.x-src/2,p.y-src/2,src,src,0,0,size,size);
+  lctx.strokeStyle="#f00"; lctx.lineWidth=1; lctx.beginPath(); lctx.moveTo(size/2,0); lctx.lineTo(size/2,size); lctx.moveTo(0,size/2); lctx.lineTo(size,size/2); lctx.stroke();
+}
+function onDown(ev){
+  if(!M.img || !M.markers.length) return; ev.preventDefault();
+  const p=toImg(ev); const k=MC.width/MC.getBoundingClientRect().width;
+  M.drag=-1;
+  M.pts.forEach((q,i)=>{ if(dist(q,p)<40*k) M.drag=i; });
+  if(M.drag<0){ if(M.pts.length>=2) M.pts=[]; M.pts.push({x:p.x,y:p.y}); M.drag=M.pts.length-1; }
+  M.pts[M.drag]={x:p.x,y:p.y}; redraw(); showLoupe(p);
+}
+function onMove(ev){ if(M.drag<0) return; ev.preventDefault(); const p=toImg(ev); M.pts[M.drag]={x:p.x,y:p.y}; redraw(); showLoupe(p); }
+function onUp(){ if(M.drag<0) return; M.drag=-1; LOUPE.style.display="none"; updateLen(); }
+MC.addEventListener("touchstart",onDown,{passive:false}); MC.addEventListener("touchmove",onMove,{passive:false}); MC.addEventListener("touchend",onUp);
+MC.addEventListener("mousedown",onDown); window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onUp);
+$("ptReset").onclick=()=>{ M.pts=[]; updateLen(); };
+
+$("applyBtn").onclick=()=>{
+  if(!(M.len>0)) return;
+  const i=parseInt($("applyTo").value,10);
+  S.values[i]=Math.round(M.len*10)/10;
+  S.judges[i]=autoJudge(S.data.items[i],S.values[i]);
+  renderItems(); guide("OK・NG");
+  $("s5").scrollIntoView({behavior:"smooth"});
+};
+
+/* ============ 5. OK・NG ============ */
+function autoJudge(it,v){ if(it.type!=="mm"||v==null||isNaN(v)) return null; return Math.abs(v-it.nominal)<=it.tol?"OK":"NG"; }
+function renderItems(){
+  const items=S.data.items;
+  $("applyTo").innerHTML=items.map((it,i)=>it.type==="mm"?`<option value="${i}">${esc(it.k)}</option>`:"").join("");
+  $("itemTable").innerHTML=`<tr><th>No</th><th>検査項目</th><th>基準</th><th>実測</th><th>判定</th></tr>`+items.map((it,i)=>{
+    const v=S.values[i], j=S.judges[i];
+    const meas = it.type==="mm" ? `<input type="number" step="0.1" data-i="${i}" class="mmIn" value="${v??""}" style="width:80px">` : "—";
+    return `<tr><td>${i+1}</td><td>${esc(it.k)}</td><td>${esc(it.std)}</td><td>${meas}</td>
+      <td class="judge"><button data-i="${i}" data-j="OK" class="${j==="OK"?"on-ok":""}">OK</button> <button data-i="${i}" data-j="NG" class="${j==="NG"?"on-ng":""}">NG</button></td></tr>`;
+  }).join("");
+  $("itemTable").querySelectorAll(".judge button").forEach(b=>b.onclick=()=>{ S.judges[b.dataset.i]=b.dataset.j; renderItems(); checkJudged(); });
+  $("itemTable").querySelectorAll(".mmIn").forEach(inp=>inp.onchange=()=>{ const i=inp.dataset.i; const v=parseFloat(inp.value); S.values[i]=isNaN(v)?null:v; const a=autoJudge(S.data.items[i],S.values[i]); if(a) S.judges[i]=a; renderItems(); checkJudged(); });
+}
+function checkJudged(){ const all=S.data.items.every((_,i)=>S.judges[i]); if(all) guide("判定を確定"); return all; }
+
+$("finishBtn").onclick=()=>{
+  if(!checkJudged()){ alertLite("判定が入っていない項目があります。"); return; }
+  if(!$("inspector").value.trim()){ alertLite("検査者を入れてください。"); return; }
+  S.finished=true; S.time=new Date();
+  done(4,S.values && Object.keys(S.values).length>0); done(5); unlock(6);
+  ["s4","s5"].forEach(id=>$(id).classList.remove("locked"));
+  renderSheet(); saveHistory(); guide("保存");
+  $("s6").scrollIntoView({behavior:"smooth"});
+};
+function alertLite(t){ guide(t); $("guide").animate([{transform:"scale(1.08)"},{transform:"scale(1)"}],{duration:300}); }
+
+/* ============ 6. 検査票（紙と同じ並び） ============ */
+function fmtDate(d){ const z=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}/${z(d.getMonth()+1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; }
+function overall(){ return S.data.items.some((_,i)=>S.judges[i]==="NG")?"NG":"OK"; }
+function renderSheet(){
+  const d=S.data, ov=overall();
+  $("sheetBox").innerHTML=`<div class="sheet"><h3>部材検査票</h3>
+    <table class="info">
+      <tr><td>TOPオーダー</td><td>${esc(S.order)}</td></tr><tr><td>部品番号</td><td>${esc(d.part)}</td></tr>
+      <tr><td>品名</td><td>${esc(d.name)}</td></tr><tr><td>検査日時</td><td>${fmtDate(S.time)}</td></tr>
+      <tr><td>検査者</td><td>${esc($("inspector").value)}</td></tr>
+      <tr><td>総合判定</td><td><span class="badge ${ov.toLowerCase()}">${ov}</span></td></tr>
+    </table>
+    <table style="margin-top:8px"><tr><th>No</th><th>検査項目</th><th>基準</th><th>実測</th><th>判定</th></tr>
+    ${d.items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(it.k)}</td><td>${esc(it.std)}</td><td>${S.values[i]??""}</td><td>${S.judges[i]}</td></tr>`).join("")}
+    </table>
+    <div class="muted" style="margin-top:6px">写真：${S.photos.map(p=>esc(p.name)).join("、")||"なし"}</div></div>`;
+}
+function sheetAOA(rec){
+  const a=[["部材検査票"],[],
+    ["TOPオーダー",rec.order,"","部品番号",rec.part],
+    ["品名",rec.name,"","検査日時",rec.time],
+    ["検査者",rec.inspector,"","総合判定",rec.overall],[],
+    ["No","検査項目","基準","実測","判定"]];
+  rec.items.forEach((it,i)=>a.push([i+1,it.k,it.std,it.v??"",it.j]));
+  a.push([],["写真",rec.photos.join("、")]);
+  return a;
+}
+function record(){
+  return { order:S.order, part:S.data.part, name:S.data.name, time:fmtDate(S.time), inspector:$("inspector").value, overall:overall(),
+    items:S.data.items.map((it,i)=>({k:it.k,std:it.std,v:S.values[i]??null,j:S.judges[i]})), photos:S.photos.map(p=>p.name) };
+}
+$("xlsxBtn").onclick=()=>{
+  const rec=record();
+  if(!window.XLSX){ $("saveMsg").textContent="Excelの部品が読み込めませんでした。"; return; }
+  const wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet(sheetAOA(rec));
+  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:4}}];
+  ws["!cols"]=[{wch:12},{wch:22},{wch:22},{wch:16},{wch:18}];
+  XLSX.utils.book_append_sheet(wb,ws,"検査票");
+  XLSX.writeFile(wb,`部材検査票_${rec.order}_${rec.part}.xlsx`);
+  $("saveMsg").textContent="Excelを保存しました（iPhoneでは「ファイル」アプリに保存できます）。";
+};
+$("photoSaveBtn").onclick=async ()=>{
+  if(!S.photos.length){ $("saveMsg").textContent="写真がありません。"; return; }
+  const files=S.photos.map(p=>new File([p.file],p.name,{type:p.file.type||"image/jpeg"}));
+  if(navigator.canShare && navigator.canShare({files})){
+    try{ await navigator.share({files}); $("saveMsg").textContent="写真を共有しました。"; }catch(e){}
+  } else {
+    S.photos.forEach(p=>{ const a=document.createElement("a"); a.href=p.url; a.download=p.name; a.click(); });
+  }
+};
+$("nextBtn").onclick=()=>resetInspection(true);
+$("resetBtn").onclick=()=>resetInspection(true);
+
+function saveHistory(){ const h=store.get(); h.unshift(record()); store.set(h.slice(0,200)); renderHistory(); }
+function renderHistory(){
+  const h=store.get();
+  $("history").innerHTML=h.length? h.map(r=>`<li>${esc(r.time)}　${esc(r.order)}　${esc(r.part)}　<b>${esc(r.overall)}</b>　${esc(r.inspector)}</li>`).join("") : '<li class="muted">まだありません</li>';
+}
+$("histXlsx").onclick=()=>{
+  const h=store.get(); if(!h.length||!window.XLSX) return;
+  const wb=XLSX.utils.book_new();
+  const rows=[["検査日時","TOPオーダー","部品番号","品名","検査者","総合判定","実測（項目:値）"]];
+  h.forEach(r=>rows.push([r.time,r.order,r.part,r.name,r.inspector,r.overall,r.items.filter(i=>i.v!=null).map(i=>i.k+":"+i.v).join(" / ")]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),"一覧");
+  h.forEach((r,i)=>{ if(i<30) XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sheetAOA(r)),(r.order+"_"+(i+1)).slice(0,31)); });
+  XLSX.writeFile(wb,"部材検査_履歴.xlsx");
+};
+$("histClear").onclick=()=>{ store.set([]); renderHistory(); };
+
+function resetInspection(full){
+  stopScan();
+  S.photos.forEach(p=>URL.revokeObjectURL(p.url));
+  Object.assign(S,{ photos:[], selPhoto:-1, values:{}, judges:{}, finished:false });
+  if(full){ S.order=null; S.data=null; $("orderInput").value=""; }
+  for(let i=1;i<=6;i++) done(i,false);
+  renderThumbs(); clearMeasure(); $("sheetBox").innerHTML=""; $("saveMsg").textContent="";
+  if(S.data) renderItems(); else $("itemTable").innerHTML="";
+  unlock(1); guide("バーコードを読む");
+  if(full) window.scrollTo({top:0,behavior:"smooth"});
+}
+const _load=loadOrder;
+loadOrder=function(c){ _load(c); if(S.data) renderItems(); };
+renderHistory();
+</script>
+</body>
+</html>
