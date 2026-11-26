@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; worker-src 'self'; connect-src https://0.peerjs.com wss://0.peerjs.com http://127.0.0.1:9000 ws://127.0.0.1:9000; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>部材検査（iPhone）</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="phone.css">
+</head>
+<body>
+<div id="bar"><span id="dot"></span><span id="barTxt">準備中…</span><button id="modeBtn" hidden>単独で使う</button></div>
+<iframe id="app" title="部材検査" allow="camera; microphone; fullscreen; clipboard-write"></iframe>
+<div id="cover">
+  <div class="box">
+    <h1>部材検査（iPhone）</h1>
+    <p id="msg">準備中…</p>
+    <div id="codeBox" hidden><div class="muted">タブレットに出ている番号と同じか確かめて、タブレットで「許可」を押してください</div><div id="code"></div></div>
+    <button id="retry" hidden>つなぎ直す</button>
+  </div>
+</div>
+<script src="lib/peerjs.min.js"></script>
+<script src="phone.js"></script>
+</body>
+</html>

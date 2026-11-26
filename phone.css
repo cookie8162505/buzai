@@ -1,0 +1,16 @@
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; background:#111; font-family:-apple-system,"Hiragino Sans",sans-serif; }
+#bar { position:fixed; left:0; right:0; top:0; height:calc(22px + env(safe-area-inset-top)); padding-top:env(safe-area-inset-top); background:#111; color:#ddd; font-size:11px; display:flex; align-items:center; gap:6px; padding-left:10px; z-index:3; }
+#dot { width:8px; height:8px; border-radius:50%; background:#888; }
+#dot.on { background:#2ecc71; } #dot.off { background:#e74c3c; }
+#barTxt { flex:1; }
+#modeBtn { font:inherit; font-size:11px; color:#ddd; background:none; border:1px solid #555; border-radius:4px; padding:1px 6px; margin-right:8px; }
+#app { position:fixed; left:0; right:0; bottom:0; top:calc(22px + env(safe-area-inset-top)); width:100%; height:calc(100% - 22px - env(safe-area-inset-top)); border:0; background:#fff; }
+#cover { position:fixed; inset:0; background:rgba(17,17,17,.96); color:#fff; z-index:5; display:flex; align-items:center; justify-content:center; padding:24px; }
+#cover.hide { display:none; }
+.box { max-width:360px; text-align:center; }
+.box h1 { font-size:18px; margin:0 0 14px; }
+.box p { font-size:15px; line-height:1.6; }
+.muted { color:#aaa; font-size:13px; }
+#code { font-size:44px; font-weight:700; letter-spacing:.2em; margin:10px 0; }
+#retry { font:inherit; font-size:16px; padding:10px 18px; border-radius:8px; border:1px solid #fff; background:#fff; color:#111; margin-top:10px; }
